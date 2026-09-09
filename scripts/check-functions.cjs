@@ -1,0 +1,6 @@
+require('@next/env').loadEnvConfig(process.cwd());
+const {GoogleAuth}=require('google-auth-library');
+(async()=>{const account=JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);const token=await new GoogleAuth({credentials:account,scopes:['https://www.googleapis.com/auth/cloud-platform']}).getAccessToken();
+ const urls={functions:`https://cloudfunctions.googleapis.com/v2/projects/${account.project_id}/locations/-/functions`,billing:`https://cloudbilling.googleapis.com/v1/projects/${account.project_id}/billingInfo`,scheduler:`https://cloudscheduler.googleapis.com/v1/projects/${account.project_id}/locations/europe-west1/jobs`};
+ for(const [service,url]of Object.entries(urls)){const response=await fetch(url,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(20000)});const data=await response.json();console.log(JSON.stringify({service,status:response.status,...(service==='billing'&&response.ok?{billingEnabled:data.billingEnabled}:{}),...(service==='functions'&&response.ok?{existingFunctions:(data.functions||[]).map(f=>({name:f.name.split('/').at(-1),region:f.name.split('/')[3]}))}:{}),...(!response.ok?{error:data.error?.status}: {})}));}
+})().catch(()=>{console.error('Cloud Functions access check failed.');process.exitCode=1;});

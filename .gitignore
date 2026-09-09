@@ -1,0 +1,12 @@
+node_modules
+.next
+.env*
+*.tsbuildinfo
+.next-build
+.DS_Store
+test-results
+playwright-report
+functions/node_modules
+functions/lib
+functions/.env*
+firebase-debug.log
