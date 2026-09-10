@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Keep production verification separate from an open development server.
-  distDir: process.env.NODE_ENV === 'production' ? '.next-build' : '.next',
+  // Vercel expects production output in .next; isolate local development output.
+  distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
 };
 export default nextConfig;
