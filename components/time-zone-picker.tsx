@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useId, useMemo, useState } from 'react';
-const common=['UTC','Africa/Nairobi','Africa/Juba','Africa/Khartoum','Africa/Kampala','Africa/Dar_es_Salaam'];
+// Browsers such as Safari list only canonical zones (Ouagadougou and Bamako fold into Abidjan), so every African city zone is always offered.
+const common=['UTC','Africa/Abidjan','Africa/Accra','Africa/Addis_Ababa','Africa/Algiers','Africa/Asmara','Africa/Bamako','Africa/Bangui','Africa/Banjul','Africa/Bissau','Africa/Blantyre','Africa/Brazzaville','Africa/Bujumbura','Africa/Cairo','Africa/Casablanca','Africa/Ceuta','Africa/Conakry','Africa/Dakar','Africa/Dar_es_Salaam','Africa/Djibouti','Africa/Douala','Africa/El_Aaiun','Africa/Freetown','Africa/Gaborone','Africa/Harare','Africa/Johannesburg','Africa/Juba','Africa/Kampala','Africa/Khartoum','Africa/Kigali','Africa/Kinshasa','Africa/Lagos','Africa/Libreville','Africa/Lome','Africa/Luanda','Africa/Lubumbashi','Africa/Lusaka','Africa/Malabo','Africa/Maputo','Africa/Maseru','Africa/Mbabane','Africa/Mogadishu','Africa/Monrovia','Africa/Nairobi','Africa/Ndjamena','Africa/Niamey','Africa/Nouakchott','Africa/Ouagadougou','Africa/Porto-Novo','Africa/Sao_Tome','Africa/Tripoli','Africa/Tunis','Africa/Windhoek'];
 export function TimeZonePicker({value,onChange,disabled=false}:{value:string;onChange:(zone:string)=>void;disabled?:boolean}){
  const id=useId(),[search,setSearch]=useState(''),[zones,setZones]=useState(common);
  useEffect(()=>{

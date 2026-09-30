@@ -106,3 +106,13 @@
 .tabs-row { min-width:0; max-width:100%; }
 .tabs-row .tabs { min-width:0; max-width:100%; overflow-x:auto; }
 .tabs-row .tabs button { flex-shrink:0; white-space:nowrap; }
+.team-list small.team-active{display:flex;align-items:center;gap:6px;color:#067647;font-weight:600}
+.active-dot{width:8px;height:8px;flex:none;border-radius:50%;background:#12b76a;box-shadow:0 0 0 3px rgba(18,183,106,.18);animation:active-pulse 2s ease-in-out infinite}
+@keyframes active-pulse{50%{box-shadow:0 0 0 5px rgba(18,183,106,.05)}}
+@media (prefers-reduced-motion:reduce){.active-dot{animation:none}}
+.team-hours{text-align:right}.team-hours strong{display:block;font-size:14px;color:var(--foreground)}.team-hours small{margin-top:2px}
+.team-hours.live strong{color:#067647}
+@media (max-width:700px){.team-hours.live{display:block;margin:0 4px}.team-hours.live strong{font-size:12px}}
+label>span.password-field{position:relative;display:block;margin:0;color:inherit}.password-field input{width:100%;padding-right:46px}
+.password-toggle{position:absolute;top:0;right:0;bottom:0;width:44px;display:flex;align-items:center;justify-content:center;border:0;background:none;color:var(--muted);cursor:pointer;border-radius:0 8px 8px 0}
+.password-toggle:hover{color:var(--foreground)}.password-toggle:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}

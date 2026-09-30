@@ -31,7 +31,8 @@ export type Profile = { cutoffTime?: string | null; uid: string; company: string
 export type Station = { id: string; name: string; active: boolean; source: 'shared' | 'duty'; country?: string; timeZone?: string };
 export type StationContact = { active?:boolean; id:string; stationId:string; name:string; email:string; phone:string };
 export type Settings = { allowManualTimes: boolean; alertEmails?: string[] };
-export type DutyData = { timeZone?:string; lastStationId?:string; pendingAutoCheckouts?: {id:string;date:string;cutoffAt:number}[]; month: string; todayDay: DutyDay | null; profile: Profile; isAdmin: boolean; managers: { uid: string; name: string }[]; stations: Station[]; days: DutyDay[]; active: Active | null; settings: Settings; companyName: string; team: Profile[]; reportDeliveryReady: boolean; reporting: { queued: number; failed: number; blocked: number } };
+export type TeamActivity = { active: Pick<Active,'start'|'timeZone'|'station'|'cutoffAt'> | null; todayDay: DutyDay | null };
+export type DutyData = { timeZone?:string; lastStationId?:string; pendingAutoCheckouts?: {id:string;date:string;cutoffAt:number}[]; month: string; todayDay: DutyDay | null; profile: Profile; isAdmin: boolean; managers: { uid: string; name: string }[]; stations: Station[]; days: DutyDay[]; active: Active | null; settings: Settings; companyName: string; team: Profile[]; teamActivity?: Record<string, TeamActivity>; reportDeliveryReady: boolean; reporting: { queued: number; failed: number; blocked: number } };
 export function totalForDay(day: DutyDay | undefined) { return day && ['recorded', 'pending_checkout'].includes(day.status) ? day.sessions.filter(s => !s.autoCheckoutPending).reduce((sum, s) => sum + s.end - s.start, 0) : 0; }
 export function overtimeForDays(days: DutyDay[]) { return days.reduce((sum, day) => sum + Math.max(0, totalForDay(day) - TARGET_MS), 0); }
 export function validateSessions(sessions: Session[], date: string, now = Date.now()) {
