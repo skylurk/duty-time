@@ -11,7 +11,9 @@ npm run dev
 
 Open http://localhost:3000 and sign in using an existing Firebase email/password account. The app no longer uses demo records or local-storage duty sessions.
 
-Production verification uses a separate build directory so an open development server is unaffected:
+Development builds go to `.next-dev` and production builds to `.next` (see `next.config.mjs`), so a production build does not disturb an open development server. Run only **one** `next dev` per checkout: a second dev server rebuilds the same `.next-dev` folder and the first one starts returning 404 for API routes. If that happens, stop the server, delete `.next-dev`, and start it again.
+
+Production verification:
 
 ```sh
 npm run build
@@ -27,7 +29,7 @@ npm run lint
 - `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`
 - Optional public Firebase storage and messaging settings already present in the supplied config
 - `FIREBASE_SERVICE_ACCOUNT_KEY`: JSON service-account credentials, server only
-- `RESEND_API_KEY` and `RESEND_FROM_EMAIL`: server-only report delivery settings; the sender must be allowed by your Resend account
+- `RESEND_API_KEY` and `RESEND_FROM_EMAIL`: server-only report delivery settings; the sender must be allowed by your Resend account. `node scripts/check-resend.cjs` checks the sender domain without sending mail, but needs a key with domain read access; a send-only key reports `restricted_api_key`.
 
 Never put the service account or Resend key in a `NEXT_PUBLIC_` variable. The service-account module imports `server-only` and is used only by API routes. Resend keys are never returned to the browser.
 
@@ -46,17 +48,18 @@ The supplied service account can read current rules but was denied the Rules API
 
 ## Features
 
-- Existing Firebase sign-in, sign-out, and password reset
+- Existing Firebase sign-in, sign-out, and password reset, with a show/hide password toggle
 - Existing `users_new`, `company`, `station`, and `position` data
 - Persistent server-stored timer; the open-session clock shows all elapsed hours since check-in, including across midnight, reloads, and suspended tabs. Today’s totals and overtime are tracked separately.
 - Per-company manual-time settings, validated by the server
 - Station-local dates and times, UTC/Zulu displays, and sessions crossing local midnight
-- Per-day overtime above eight hours, calendar navigation, session detail sheets, CSV export
+- Per-day overtime above 12 hours, calendar navigation, session detail sheets, CSV export
 - Missed-entry requests only for dates without a duty document, with required reasons
 - Assigned line managers can review requests and edit recorded hours with immutable audit records
+- **My line duty** lists checked-in team members first, with a green *Active* indicator, their check-in time in the station’s local time zone, the station, and live hours worked today
 - Final daily reports through Close for the day
 - Admin user creation, duty roles, multiple searchable line-manager selection, station management, and shared-password updates
-- Resend reports with session tables, daily totals, overtime, a durable delivery record, and retry controls
+- Resend reports with session tables, daily totals, overtime, a durable delivery record, and retry controls (see [Email reports](#email-reports))
 
 ## Boundaries
 
@@ -66,7 +69,27 @@ Duty administrators are checked against the current Firebase custom claim on eve
 
 Report state `sent` means Resend accepted the email, not confirmed inbox delivery. The scheduled cutoff/report worker is deployed and enabled in `europe-west1`, running every minute; pending/failed reports can also be retried in Administration. See `docs/automatic-checkout.md`. No test email is sent to real line managers during development checks.
 
+## Email reports
+
+Emails are built in `lib/report-content.ts` and sent by `lib/report-worker.ts`. Each has a plain-text body and a branded HTML body: a DutyTime header, a color by type (red for overtime and rest alerts, amber for automatic checkouts needing action, green for confirmed checkouts, blue for other reports), summary figures, and a sessions table showing local and UTC times. The HTML uses inline styles and tables so it renders in Gmail and Outlook.
+
+| Report | Recipients |
+|---|---|
+| Check-out, final daily, and corrected reports | The user’s enabled line managers |
+| Automatic and actual checkout | Line managers and the user |
+| 12-hour overtime and insufficient-rest alerts | Line managers, the alert emails in Administration → Settings, and active maintenance/operations contacts for the station |
+
+A report with no valid recipient is marked `blocked` (“No eligible recipient email addresses are assigned”) and stays in Administration → Reports; assign a line manager, then retry. The email content is saved on the first delivery attempt so retries stay identical, which means reports already queued before a template change are still sent in the old layout.
+
+## Station time zones
+
+Each station has an IANA time zone, set in Administration → Stations. A station without one falls back to `Africa/Nairobi`. The picker always offers every African city zone, because some browsers (Safari in particular) list only canonical zones and omit cities such as `Africa/Ouagadougou` or `Africa/Bamako`.
+
+A check-in stores the station’s time zone and cutoff when it starts. Changing a station’s time zone applies to later check-ins only; a session already open keeps its original zone and cutoff until it is checked out.
+
 ## Automatic checkout
+
+Duty uses a **12-hour daily threshold** and requires **8 hours’ rest before the next duty day**. Admins configure shared alert recipients, station time zones, and named station contacts; see [duty, rest, and station setup](docs/duty-rest-and-stations.md).
 
 The default cutoff is 7pm in the checked-in station’s local time, with per-user line-manager overrides. Late check-ins are blocked. Automatic sessions remain **Pending actual checkout** until the user or manager records the actual finish time; both receive automatic and corrected email notifications. See [automatic checkout setup](docs/automatic-checkout.md) for deployment and behavior.
 
@@ -84,5 +107,3 @@ npx playwright test
 They use mock Firebase accounts and API records for authenticated UI workflows, and exercise the real API’s unauthenticated rejection. Configure `PLAYWRIGHT_CHROME_PATH` if Chrome is installed outside the default macOS location. Real check-in/approval/email delivery should be verified with designated accounts after managers are assigned; automated checks do not alter production duty records.
 
 Implementation references: [Firebase token verification](https://firebase.google.com/docs/auth/admin/verify-id-tokens), [Firestore server-side access](https://firebase.google.com/docs/firestore/security/rules-structure), [Resend sending API](https://resend.com/docs/api-reference/emails/send-email).
-
-Duty now uses a **12-hour daily threshold** and **8-hour rest before the next duty day**. Admins configure shared alert recipients, station time zones, and named station contacts. See [duty, rest, and station setup](docs/duty-rest-and-stations.md).
