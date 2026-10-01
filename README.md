@@ -73,11 +73,13 @@ Report state `sent` means Resend accepted the email, not confirmed inbox deliver
 
 Emails are built in `lib/report-content.ts` and sent by `lib/report-worker.ts`. Each has a plain-text body and a branded HTML body: a DutyTime header, a color by type (red for overtime and rest alerts, amber for automatic checkouts needing action, green for confirmed checkouts, blue for other reports), summary figures, and a sessions table showing local and UTC times. The HTML uses inline styles and tables so it renders in Gmail and Outlook.
 
-| Report | Recipients |
-|---|---|
-| Check-out, final daily, and corrected reports | The user’s enabled line managers |
-| Automatic and actual checkout | Line managers and the user |
-| 12-hour overtime and insufficient-rest alerts | Line managers, the alert emails in Administration → Settings, and active maintenance/operations contacts for the station |
+Routine reports (check-out, close for the day, manager edits, approved missed entries) are emailed **only when that day’s confirmed total exceeds 12 hours**. Missed checkouts and alerts are always emailed. Overtime is confirmed time above 12 hours in a station-local day; provisional hours awaiting an actual checkout do not count.
+
+| Report | When | Recipients |
+|---|---|---|
+| Check-out, final daily, and corrected reports | Day over 12 hours only | The user’s enabled line managers |
+| Automatic and actual checkout | Always | Line managers and the user |
+| 12-hour overtime and insufficient-rest alerts | Always; overtime is checked every minute while on duty | Line managers, the alert emails in Administration → Settings, and active maintenance/operations contacts for the station |
 
 A report with no valid recipient is marked `blocked` (“No eligible recipient email addresses are assigned”) and stays in Administration → Reports; assign a line manager, then retry. The email content is saved on the first delivery attempt so retries stay identical, which means reports already queued before a template change are still sent in the old layout.
 

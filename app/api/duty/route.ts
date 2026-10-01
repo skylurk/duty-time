@@ -10,7 +10,8 @@ import { canCheckIn, cutoffFor, correctionDates, correctedDays, recordedStatus, 
 import { autoCheckoutUser } from '@/lib/auto-checkout';
 import { restDecision } from '@/lib/rest';
 import { queueAlert, queueOvertimeAlerts } from '@/lib/alerts';
-import { dateKey, TIME_ZONE, zuluLabel, parseTime, splitSession, validateSessions, type DutyDay, type Active, type Audit } from '@/lib/duty';
+import { dateKey, TIME_ZONE, TARGET_MS, totalForDay, zuluLabel, parseTime, splitSession, validateSessions, type DutyDay, type Active, type Audit } from '@/lib/duty';
+const ROUTINE_REPORTS = new Set(['checkout', 'closed', 'edited', 'approved']);
 class RestDenied extends Error { constructor(public uid:string, public day:DutyDay,public lastEnd:number,public eligibleAt:number|null,public stationId:string,message:string){super(message);} }
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -74,14 +75,16 @@ export async function POST(request: NextRequest) {
     const stateRef = db.collection('duty_time_state').doc(target.uid);
     const result = await db.runTransaction(async tx => {
       const [op, stateSnap] = await Promise.all([tx.get(opRef), tx.get(stateRef)]);
-      if (op.exists) { fail(op.data()?.action === input.action && op.data()?.payloadHash === payloadHash, 'This request identifier was already used.'); return op.data()!.result as { reportIds: string[]; message: string }; }
+      if (op.exists) { fail(op.data()?.action === input.action && op.data()?.payloadHash === payloadHash, 'This request identifier was already used.'); return op.data()!.result as { reportIds: string[]; savedDates?: string[]; message: string }; }
       const active = (stateSnap.data()?.active || null) as Active | null;
       const timeZone=station?.timeZone||active?.timeZone||stateSnap.data()?.timeZone||TIME_ZONE, today=dateKey(now,timeZone);
-      const reportIds: string[] = [];
+      const reportIds: string[] = [], savedDates: string[] = [];
       const save = (day: DutyDay, kind?: string) => {
-        day.revision += 1;
+        day.revision += 1; savedDates.push(day.date);
         tx.set(db.collection('duty_time_days').doc(day.id), { ...day, audit: [], updatedAt: now });
-        if (kind) { const id = `${input.requestId}_${day.date}`; queueReport(tx, id, day, target, kind); reportIds.push(id); }
+        // Routine checkout, close, edit and approval reports are emailed only when the day exceeds the 12-hour target;
+        // missed checkouts (automatic/actual checkout) and alerts are always sent.
+        if (kind && (!ROUTINE_REPORTS.has(kind) || totalForDay(day) > TARGET_MS)) { const id = `${input.requestId}_${day.date}`; queueReport(tx, id, day, target, kind); reportIds.push(id); }
       };
       let message = '';
       if (input.action === 'checkin') {
@@ -121,14 +124,14 @@ export async function POST(request: NextRequest) {
         });
         for (const day of updated) save(day, input.closeDay ? 'closed' : 'checkout');
         tx.set(stateRef, { uid: target.uid, company: target.company, active: null, updatedAt: now }, { merge: true });
-        message = input.closeDay ? 'Your day is closed. Your final report is queued.' : 'You’re checked out. Your duty report is queued.';
+        message = input.closeDay ? 'Your day is closed.' : 'You’re checked out.';
       } else if (input.action === 'close') {
         fail(!active, 'Check out before closing your day.');
         const ref = db.collection('duty_time_days').doc(dayId(target.uid, today)), snap = await tx.get(ref);
         fail(snap.exists, 'There are no sessions to close today.');
         const day = snap.data() as DutyDay;
         fail(day.status === 'recorded' && day.sessions.length > 0 && !day.closed, 'This day cannot be closed.');
-        day.closed = true; save(day, 'closed'); message = 'Your day is closed. Your final report is queued.';
+        day.closed = true; save(day, 'closed'); message = 'Your day is closed.';
       } else if (input.action === 'request') {
         fail(input.date <= today, 'Missed entries cannot be in the future.');
         const start = parseTime(input.date, input.start,timeZone), end = parseTime(input.date, input.end,timeZone);
@@ -184,11 +187,11 @@ export async function POST(request: NextRequest) {
         }
         tx.create(db.collection('duty_time_audit').doc(input.requestId), { dayId: day.id, uid: target.uid, company: target.company, actorUid: actor.profile.uid, actorName: actor.profile.name, at: now, action: input.action, reason: input.reason || 'Approved missed entry', before, after: day.sessions, statusAfter: day.status });
       }
-      const result = { reportIds, message };
+      const result = { reportIds, savedDates, message };
       tx.create(opRef, { action: input.action, payloadHash, actorUid: actor.profile.uid, createdAt: now, result });
       return result;
     });
-    const alertIds=await queueOvertimeAlerts(db,target.uid,now,[...('date' in input?[input.date]:[]),...result.reportIds.map(id=>id.slice(-10))]);
+    const alertIds=await queueOvertimeAlerts(db,target.uid,now,[...('date' in input?[input.date]:[]),...(result.savedDates ?? result.reportIds.map(id=>id.slice(-10)))]);
     const delivery = await Promise.all([...result.reportIds,...alertIds].map(id => deliverReport(id)));
     return NextResponse.json({ ...result, delivery });
   } catch (error) { if(error instanceof RestDenied){
