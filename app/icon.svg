@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#1a7fc2"/>
+  <!-- crown and side button -->
+  <rect x="26" y="7" width="12" height="6" rx="2" fill="#fff"/>
+  <rect x="29.5" y="12" width="5" height="5" fill="#fff"/>
+  <rect x="46" y="15" width="5" height="8" rx="2" fill="#fff" transform="rotate(45 48.5 19)"/>
+  <!-- face -->
+  <circle cx="32" cy="37" r="19" fill="#fff"/>
+  <!-- elapsed time wedge: 12 o'clock to 4 o'clock -->
+  <path d="M32 37 V22 A15 15 0 0 1 44.99 44.5 Z" fill="#9fd0f0"/>
+  <!-- hand -->
+  <line x1="32" y1="37" x2="44.99" y2="44.5" stroke="#0e4f7c" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="32" cy="37" r="3.5" fill="#0e4f7c"/>
+</svg>
