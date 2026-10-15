@@ -163,3 +163,22 @@ test('admin manual is a protected tab and station contacts can be deactivated wi
  await page.route('**/api/station-contacts*',async route=>{if(route.request().method()==='POST'){saved=route.request().postDataJSON();active=(saved as {active:boolean}).active;await route.fulfill({json:{message:'Contact updated.'}});}else await route.fulfill({json:{contacts:[{id:'operations',stationId:'wilson',name:'Operations',email:'ops@example.com',phone:'0700000000',active}]}});});
  await page.getByRole('button',{name:/Wilson Airport/}).click();await expect(page.getByRole('button',{name:/Delete Operations/})).toHaveCount(0);await page.getByRole('button',{name:'Deactivate Operations',exact:true}).click();await expect.poll(()=>saved).toEqual({action:'setActive',stationId:'wilson',id:'operations',active:false});await expect(page.getByRole('button',{name:'Reactivate Operations'})).toBeVisible();await page.getByRole('button',{name:'Reactivate Operations'}).click();await expect(page.getByRole('button',{name:'Deactivate Operations'})).toBeVisible();
 });
+test('admin team calendar marks overtime and the overtime report lists dates and amounts',async({page})=>{
+ await page.setViewportSize({width:1440,height:1000});
+ const date=`${month}-02`,people=[{uid:'p1',name:'Long Shift',position:'Engineer',department:'Ops',enabled:true},{uid:'p2',name:'Short Shift',position:'Technician',department:'Ops',enabled:true}];
+ const days=[{uid:'p1',date,status:'recorded',sessions:[{start:parseTime(date,'06:00'),end:parseTime(date,'19:30'),station:'Wilson Airport',stationId:'wilson',timeZone:'Africa/Nairobi'}]},{uid:'p2',date,status:'recorded',sessions:[{start:parseTime(date,'08:00'),end:parseTime(date,'16:00'),station:'Wilson Airport',stationId:'wilson',timeZone:'Africa/Nairobi'}]}];
+ await page.route('**/api/reports?*',route=>{const u=new URL(route.request().url());route.fulfill({json:{from:u.searchParams.get('from'),to:u.searchParams.get('to'),generatedAt:Date.now(),companyName:'Kasas Limited',people,days,recent:[],active:[]}});});
+ await mockAccount(page,true);
+ await page.getByRole('button',{name:'Admin',exact:true}).click();
+ await page.getByRole('button',{name:'Calendar',exact:true}).click();
+ await page.getByRole('button',{name:new RegExp(`^${date}, 2 people, 21h 30m, 1 over 12 hours`)}).click();
+ const dialog=page.getByRole('dialog');
+ await expect(dialog.locator('.day-person.is-over')).toContainText('Long Shift');
+ await expect(dialog.locator('.day-person.is-over')).toContainText('+1h 30m overtime');
+ await expect(dialog.locator('.day-person:not(.is-over)')).toContainText('Short Shift');
+ await page.keyboard.press('Escape');
+ await page.getByRole('button',{name:'Reports',exact:true}).click();
+ const report=page.locator('.report-table');
+ await expect(report).toContainText('Long Shift');await expect(report).toContainText('+1h 30m');await expect(report).not.toContainText('Short Shift');
+ await expect(page.getByRole('button',{name:'Print'})).toBeEnabled();
+});

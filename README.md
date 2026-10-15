@@ -40,7 +40,7 @@ The current project has already had the rules published and 116 memberships init
 1. Publish `firestore.rules` in the Firebase console. It preserves the existing apps’ access and prevents direct client reads/writes of top-level `duty_time_` collections. All DutyTime data access goes through the authenticated Next.js server API. The original rules are retained in `docs/firestore.rules.before-duty-time` for comparison.
 2. Run `node scripts/firebase-tools.cjs seed-memberships`. This verifies that the live rules match the prepared file before creating missing `duty_time_user_data` memberships. Existing profiles and existing duty settings are never overwritten. Initial memberships have no manager privileges or assignments.
 3. `david@acuvera.com` has been explicitly granted `duty_time_admin: true`, preserving its other claims. Sign in to open Administration, assign line managers, and set duty-specific positions.
-4. Confirm Resend’s sender domain is verified. On check-out, the app saves a report with the duty transaction, then attempts delivery. Reports without an assigned manager or working email configuration remain visible in Administration → Reports for retry.
+4. Confirm Resend’s sender domain is verified. On check-out, the app saves a report with the duty transaction, then attempts delivery. Reports without an assigned manager or working email configuration remain visible in Administration → Reports → Email delivery for retry.
 
 For future explicitly authorized admins: `node scripts/firebase-tools.cjs grant-admin account@example.com`.
 
@@ -81,7 +81,21 @@ Routine reports (check-out, close for the day, manager edits, approved missed en
 | Automatic and actual checkout | Always | Line managers and the user |
 | 12-hour overtime and insufficient-rest alerts | Always; overtime is checked every minute while on duty | Line managers, the alert emails in Administration → Settings, and active maintenance/operations contacts for the station |
 
-A report with no valid recipient is marked `blocked` (“No eligible recipient email addresses are assigned”) and stays in Administration → Reports; assign a line manager, then retry. The email content is saved on the first delivery attempt so retries stay identical, which means reports already queued before a template change are still sent in the old layout.
+A report with no valid recipient is marked `blocked` (“No eligible recipient email addresses are assigned”) and stays in Administration → Reports → Email delivery; assign a line manager, then retry. The email content is saved on the first delivery attempt so retries stay identical, which means reports already queued before a template change are still sent in the old layout.
+
+## Team calendar and reports
+
+Administrators get two company-wide views, both fed by `GET /api/reports?from=&to=` (admin only, ranges up to one year). Calculations live in `lib/reports.ts` and are covered by `tests/reports.test.ts`.
+
+- **Administration → Calendar**: a month grid of everyone’s confirmed hours. Days where anyone exceeded 12 hours are red; selecting a day opens each person’s hours, sessions and stations, with overtime marked in red and people on duty now listed for today.
+- **Administration → Reports**:
+  - **Overtime**: people with overtime, each date, and the amount over 12 hours, with totals. *Print* produces a clean page (or PDF) containing only the report; *Export CSV* downloads the same rows.
+  - **Trends**: total and overtime hours per day (weekly beyond 45 days), plus overtime by person and by station (attributed to the station where most of that day was worked).
+  - **Rest & load**: live list of people over or approaching 12 hours on duty (from 10 hours), people inside their rest (8 hours after a normal day, 10 hours after a day over 12 hours) with the time they can check in again, people whose rest cannot be verified because an automatic checkout needs its actual time, and last-7-day hours (flagged at 60 hours or two overtime days).
+  - **Limit exceptions** (in the Overtime section): days over 20 hours and check-ins inside a required 10-hour rest, which only manager corrections, approved missed entries or actual checkouts can create.
+  - **Email delivery**: the existing queued/failed/blocked report list.
+
+Only confirmed hours count: pending requests, rejected days and provisional time awaiting an actual checkout are excluded.
 
 ## Station time zones
 
@@ -89,9 +103,17 @@ Each station has an IANA time zone, set in Administration → Stations. A statio
 
 A check-in stores the station’s time zone and cutoff when it starts. Changing a station’s time zone applies to later check-ins only; a session already open keeps its original zone and cutoff until it is checked out.
 
-## Automatic checkout
+## Duty limits and automatic checkout
 
-Duty uses a **12-hour daily threshold** and requires **8 hours’ rest before the next duty day**. Admins configure shared alert recipients, station time zones, and named station contacts; see [duty, rest, and station setup](docs/duty-rest-and-stations.md).
+Duty limits, all per station-local calendar day (agreed with Quality Control, October 2026):
+
+- **Overtime**: confirmed time over **12 hours** in a day.
+- **10-hour rest**: after a day over 12 hours, no check-in for **10 hours after the last check-out**, even the same day. The rest runs from the end of a shift that continues past midnight. Implemented in `longDayRest`/`restDecision` (`lib/rest.ts`).
+- **8-hour rest**: after a normal day, 8 hours before the next duty day; same-day breaks are allowed.
+- **20-hour cap**: no more than **20 confirmed hours in a day**. Check-in is refused once a day is full, and each open session stores `capAt`; its automatic checkout (`sessionCutoff`) is the earlier of the daily cutoff and the cap, recorded as *Pending actual checkout*.
+- Refused check-ins show the remaining rest and the local time check-in reopens, and send a rest alert to line managers, the alert list and station Maintenance/Operations contacts. Managers may still record hours past the limits with a written reason; Reports flags them as limit exceptions.
+
+Admins configure shared alert recipients, station time zones, and named station contacts; see [duty, rest, and station setup](docs/duty-rest-and-stations.md).
 
 The default cutoff is 7pm in the checked-in station’s local time, with per-user line-manager overrides. Late check-ins are blocked. Automatic sessions remain **Pending actual checkout** until the user or manager records the actual finish time; both receive automatic and corrected email notifications. See [automatic checkout setup](docs/automatic-checkout.md) for deployment and behavior.
 
