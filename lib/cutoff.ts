@@ -6,6 +6,11 @@ export function cutoffFor(start: number, override?: string | null, timeZone?: st
   const sameDay = parseTime(dateKey(start,timeZone), clock,timeZone);
   return { cutoffAt: sameDay > start ? sameDay : parseTime(nextDate(dateKey(start,timeZone)),clock,timeZone), cutoffTime: clock };
 }
+/** The open session's automatic checkout: the daily cutoff clock, or the 20-hour daily limit when that comes first. */
+export function sessionCutoff(active: Pick<Active,'start'|'timeZone'|'capAt'>, override?: string | null) {
+  const base = cutoffFor(active.start, override, active.timeZone);
+  return active.capAt && active.capAt < base.cutoffAt ? { ...base, cutoffAt: active.capAt } : base;
+}
 export function recordedStatus(sessions: Session[]): DutyDay['status'] {
   return sessions.some(s => s.autoCheckoutPending) ? 'pending_checkout' : 'recorded';
 }

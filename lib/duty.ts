@@ -24,7 +24,7 @@ export function parseTime(date: string, time: string, timeZone = TIME_ZONE): num
 export function dayStart(date: string, timeZone = TIME_ZONE): number { return parseTime(date, '00:00', timeZone); }
 export function duration(ms: number): string { return `${Math.floor(Math.max(0, ms) / 3600000)}h ${Math.floor(Math.max(0, ms) % 3600000 / 60000)}m`; }
 export type Session = { timeZone?: string; autoCheckoutAt?: number; autoCheckoutId?: string; autoCheckoutPending?: boolean; id: string; start: number; end: number; stationId: string; station: string; notes: string };
-export type Active = Omit<Session, 'end'> & { date: string; cutoffAt?: number; cutoffTime?: string };
+export type Active = Omit<Session, 'end'> & { date: string; cutoffAt?: number; cutoffTime?: string; /** 20-hour daily limit for this session; cutoffAt never passes it. */ capAt?: number };
 export type Audit = { actorUid: string; actorName: string; at: number; reason: string; before: Session[]; after: Session[]; action: string };
 export type DutyDay = { id: string; uid: string; company: string; date: string; sessions: Session[]; status: 'recorded' | 'pending' | 'rejected' | 'pending_checkout'; reason: string; closed: boolean; audit: Audit[]; revision: number };
 export type Profile = { cutoffTime?: string | null; uid: string; company: string; firstName: string; lastName: string; name: string; email: string; department: string; position: string; photo: string; isLineManager: boolean; lineManagerUids: string[]; enabled: boolean };

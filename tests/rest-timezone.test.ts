@@ -7,9 +7,9 @@ import { queueAlert, queueOvertimeAlerts } from '../lib/alerts';
 import { sendReport } from '../lib/report-worker';
 import { memoryFirestore } from './memory-firestore';
 import type { Auth } from 'firebase-admin/auth';
-function day(end='21:00'):DutyDay{return {id:'u_2026-09-08',uid:'u',company:'c',date:'2026-09-08',sessions:[{id:'s',start:parseTime('2026-09-08','08:00'),end:parseTime('2026-09-08',end),stationId:'nbo',station:'Nairobi',notes:''}],status:'recorded',reason:'',closed:false,audit:[],revision:1};}
+function day(end='21:00',start='08:00'):DutyDay{return {id:'u_2026-09-08',uid:'u',company:'c',date:'2026-09-08',sessions:[{id:'s',start:parseTime('2026-09-08',start),end:parseTime('2026-09-08',end),stationId:'nbo',station:'Nairobi',notes:''}],status:'recorded',reason:'',closed:false,audit:[],revision:1};}
 test('next-day check-in is denied before eight hours, allowed at the exact boundary',()=>{
- const d=day();assert.ok(restDecision([d],parseTime('2026-09-09','04:59')));
+ const d=day('21:00','10:00');assert.ok(restDecision([d],parseTime('2026-09-09','04:59')));
  assert.equal(restDecision([d],parseTime('2026-09-09','05:00')),null);
 });
 test('same-day breaks remain allowed and first-ever check-in needs no rest record',()=>{
@@ -24,8 +24,8 @@ test('pending actual checkout must be resolved before next-day rest is verified'
  assert.match(restDecision([d],parseTime('2026-09-09','10:00'))!.message,/actual checkout/);
 });
 test('rest uses elapsed UTC hours across station changes',()=>{
- assert.ok(restDecision([day('23:00')],parseTime('2026-09-09','05:59','Africa/Juba'),'Africa/Juba'));
- assert.equal(restDecision([day('23:00')],parseTime('2026-09-09','06:00','Africa/Juba'),'Africa/Juba'),null);
+ assert.ok(restDecision([day('23:00','11:00')],parseTime('2026-09-09','05:59','Africa/Juba'),'Africa/Juba'));
+ assert.equal(restDecision([day('23:00','11:00')],parseTime('2026-09-09','06:00','Africa/Juba'),'Africa/Juba'),null);
 });
 test('station-local cutoffs resolve to different Zulu instants',()=>{
  const start=Date.parse('2026-09-08T06:00:00Z');

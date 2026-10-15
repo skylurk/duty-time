@@ -6,11 +6,11 @@ import { adminServices } from '@/lib/firebase/admin';
 import { authenticate, authorizeTarget, getProfile, apiError, fail, readBody, type Actor, HttpError } from '@/lib/server/access';
 import { getMonthDays, getSettings, getStations, dayId, blankDay } from '@/lib/server/data';
 import { emailReady, queueReport, deliverReport } from '@/lib/server/reports';
-import { canCheckIn, cutoffFor, correctionDates, correctedDays, recordedStatus, type AutoCheckout } from '@/lib/cutoff';
+import { canCheckIn, sessionCutoff, correctionDates, correctedDays, recordedStatus, type AutoCheckout } from '@/lib/cutoff';
 import { autoCheckoutUser } from '@/lib/auto-checkout';
-import { restDecision } from '@/lib/rest';
+import { restDecision, hoursOnDate, dailyCapAt, DAILY_CAP_MS } from '@/lib/rest';
 import { queueAlert, queueOvertimeAlerts } from '@/lib/alerts';
-import { dateKey, TIME_ZONE, TARGET_MS, totalForDay, zuluLabel, parseTime, splitSession, validateSessions, type DutyDay, type Active, type Audit } from '@/lib/duty';
+import { dateKey, dayStart, nextDate, TIME_ZONE, TARGET_MS, totalForDay, zuluLabel, parseTime, splitSession, validateSessions, type DutyDay, type Active, type Audit } from '@/lib/duty';
 const ROUTINE_REPORTS = new Set(['checkout', 'closed', 'edited', 'approved']);
 class RestDenied extends Error { constructor(public uid:string, public day:DutyDay,public lastEnd:number,public eligibleAt:number|null,public stationId:string,message:string){super(message);} }
 export const runtime = 'nodejs';
@@ -51,11 +51,11 @@ export async function GET(request: NextRequest) {
       const zones = states.map(st => { const v = st.data(); return v?.company === actor.profile.company ? { active: v.active || null, timeZone: v.active?.timeZone || v.timeZone || TIME_ZONE } : { active: null, timeZone: TIME_ZONE }; });
       const todays = await db.getAll(...team.map((p, i) => db.collection('duty_time_days').doc(dayId(p.uid, dateKey(Date.now(), zones[i].timeZone)))));
       team.forEach((p, i) => { const a = zones[i].active, d = todays[i].data();
-        teamActivity[p.uid] = { active: a ? { start: a.start, timeZone: a.timeZone, station: a.station, cutoffAt: cutoffFor(a.start, p.cutoffTime, a.timeZone).cutoffAt } : null, todayDay: d?.company === actor.profile.company ? d : null };
+        teamActivity[p.uid] = { active: a ? { start: a.start, timeZone: a.timeZone, station: a.station, cutoffAt: sessionCutoff(a, p.cutoffTime).cutoffAt } : null, todayDay: d?.company === actor.profile.company ? d : null };
       });
     }
     const localToday=currentDate===dateKey()?todaySnapshot:await db.collection('duty_time_days').doc(dayId(uid,currentDate)).get();
-    return NextResponse.json({ month, timeZone:state.data()?.active?.timeZone||state.data()?.timeZone||TIME_ZONE,lastStationId:state.data()?.stationId||null, pendingAutoCheckouts, todayDay: localToday.exists ? localToday.data() : null, profile: actor.profile, viewingProfile: target, isAdmin: actor.isAdmin, managers: managers.filter(p => p.company === actor.profile.company).map(p => ({ uid: p.uid, name: p.name })), stations: stations.filter(s => s.active), settings, days, active: state.data()?.active ? { ...state.data()!.active, ...cutoffFor(state.data()!.active.start, target.cutoffTime,state.data()!.active.timeZone) } : null, team, teamActivity, companyName: company.data()?.company_name || 'Your company', reportDeliveryReady: emailReady(), reporting: { queued: reports.docs.filter(d => ['queued', 'sending'].includes(d.data().state)).length, failed: reports.docs.filter(d => d.data().state === 'failed').length, blocked: reports.docs.filter(d => d.data().state === 'blocked').length }, audit }, { headers: { 'Cache-Control': 'private, no-store' } });
+    return NextResponse.json({ month, timeZone:state.data()?.active?.timeZone||state.data()?.timeZone||TIME_ZONE,lastStationId:state.data()?.stationId||null, pendingAutoCheckouts, todayDay: localToday.exists ? localToday.data() : null, profile: actor.profile, viewingProfile: target, isAdmin: actor.isAdmin, managers: managers.filter(p => p.company === actor.profile.company).map(p => ({ uid: p.uid, name: p.name })), stations: stations.filter(s => s.active), settings, days, active: state.data()?.active ? { ...state.data()!.active, ...sessionCutoff(state.data()!.active, target.cutoffTime) } : null, team, teamActivity, companyName: company.data()?.company_name || 'Your company', reportDeliveryReady: emailReady(), reporting: { queued: reports.docs.filter(d => ['queued', 'sending'].includes(d.data().state)).length, failed: reports.docs.filter(d => d.data().state === 'failed').length, blocked: reports.docs.filter(d => d.data().state === 'blocked').length }, audit }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) { return apiError(error); }
 }
 export async function POST(request: NextRequest) {
@@ -96,7 +96,11 @@ export async function POST(request: NextRequest) {
         const prior=history.docs.map(d=>d.data() as DutyDay).filter(d=>d.uid===target.uid&&d.company===target.company);
         fail(prior.filter(d=>['recorded','pending_checkout'].includes(d.status)).every(d=>d.sessions.every(s=>s.end<=start)), 'Check-in overlaps an existing session.');
         const rest=restDecision(prior,start,timeZone);
-        if(rest)throw new RestDenied(target.uid,blankDay(target.uid,target.company,today),rest.lastEnd,rest.eligibleAt,station!.id,rest.message+(rest.eligibleAt?` Eligible at ${zuluLabel(rest.eligibleAt)}.`:''));
+        if(rest)throw new RestDenied(target.uid,blankDay(target.uid,target.company,today),rest.lastEnd,rest.eligibleAt,station!.id,rest.message+(rest.eligibleAt?` UTC: ${zuluLabel(rest.eligibleAt)}.`:''));
+        // 20-hour daily limit: refuse once the date is full, otherwise stop this session automatically when it would be.
+        const before=hoursOnDate(prior,start,timeZone);
+        if(before>=DAILY_CAP_MS){const lastEnd=Math.max(...prior.flatMap(d=>d.sessions.map(s=>s.end)).filter(e=>e<=start));throw new RestDenied(target.uid,blankDay(target.uid,target.company,today),lastEnd,dayStart(nextDate(today),timeZone),station!.id,`You have reached the 20-hour daily limit for ${today}. Check-in is blocked until tomorrow.`);}
+        const capAt=dailyCapAt(start,before,timeZone);
         const ref = db.collection('duty_time_days').doc(dayId(target.uid, today)), snap = await tx.get(ref);
         const day = snap.exists ? snap.data() as DutyDay : blankDay(target.uid, target.company, today);
         fail(day.status !== 'pending', 'This day has a pending request. Ask your manager to review it first.');
@@ -104,7 +108,7 @@ export async function POST(request: NextRequest) {
         fail(day.sessions.every(s => s.end <= start), 'Check-in overlaps an existing session.');
         if (day.status === 'rejected') { day.sessions = []; day.status = 'recorded'; }
         fail(day.sessions.length < 48, 'This day has reached the session limit.');
-        tx.set(stateRef, { uid: target.uid, company: target.company, timeZone, stationId:station!.id, active: { id: input.requestId, date: today, start, ...cutoffFor(start,target.cutoffTime,timeZone), timeZone, stationId: station!.id, station: station!.name, notes: input.notes }, updatedAt: now }, { merge: true });
+        tx.set(stateRef, { uid: target.uid, company: target.company, timeZone, stationId:station!.id, active: { id: input.requestId, date: today, start, ...sessionCutoff({start,timeZone,capAt},target.cutoffTime), capAt, timeZone, stationId: station!.id, station: station!.name, notes: input.notes }, updatedAt: now }, { merge: true });
         message = 'You’re checked in. Your timer will keep running when you leave this page.';
       } else if (input.action === 'checkout') {
         fail(active, 'You have no active session. Refresh your duty records.', 409);

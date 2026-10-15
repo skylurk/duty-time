@@ -26,7 +26,7 @@ export async function autoCheckoutUser(db:Firestore,uid:string,now=Date.now()):P
   const reportIds:string[]=[];
   for(const [i,day] of days.entries()){
    tx.set(db.collection('duty_time_days').doc(day.id),{...day,updatedAt:now});
-   tx.create(db.collection('duty_time_audit').doc(`auto_${id}_${day.date}`),{dayId:day.id,uid,company:profile.company,actorUid:'system',actorName:'DutyTime system',at:now,action:'automatic_checkout',reason:'Automatic checkout at the configured cutoff. Pending actual checkout.',before:snapshots[i].data()?.sessions||[],after:day.sessions,statusAfter:day.status});
+   tx.create(db.collection('duty_time_audit').doc(`auto_${id}_${day.date}`),{dayId:day.id,uid,company:profile.company,actorUid:'system',actorName:'DutyTime system',at:now,action:'automatic_checkout',reason:active.capAt===cutoffAt?'Automatic checkout at the 20-hour daily limit. Pending actual checkout.':'Automatic checkout at the configured cutoff. Pending actual checkout.',before:snapshots[i].data()?.sessions||[],after:day.sessions,statusAfter:day.status});
    const reportId=`auto_${id}_${day.date}`;enqueueReport(db,tx,reportId,day,{uid,company:profile.company,name,lineManagerUids:profile.lineManagerUids||[]},'automatic_checkout');reportIds.push(reportId);
   }
   const automatic:AutoCheckout={id,uid,company:profile.company,active,cutoffAt,processedAt:now,pending:true,affectedDates:days.map(d=>d.date)};

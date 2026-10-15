@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { authenticate, authorizeTarget, fail, readBody, apiError } from '@/lib/server/access';
 import { adminServices } from '@/lib/firebase/admin';
-import { cutoffFor } from '@/lib/cutoff';
+import { sessionCutoff } from '@/lib/cutoff';
 import { dateKey, parseTime } from '@/lib/duty';
 import { DEFAULT_CUTOFF } from '@/lib/cutoff';
 import { autoCheckoutUser } from '@/lib/auto-checkout';
@@ -27,7 +27,7 @@ export async function POST(request:NextRequest){
    const active=state.data()?.active;
    if(active)fail(parseTime(dateKey(active.start,active.timeZone),input.cutoffTime||DEFAULT_CUTOFF,active.timeZone)>active.start, 'The cutoff must be after the current check-in. Check out this session before choosing an earlier cutoff.');
    tx.update(ref,{cutoffTime:input.cutoffTime,updatedAt:Date.now(),updatedBy:actor.profile.uid});
-   if(active)tx.update(stateRef,{active:{...active,...cutoffFor(active.start,input.cutoffTime,active.timeZone)},updatedAt:Date.now()});
+   if(active)tx.update(stateRef,{active:{...active,...sessionCutoff(active,input.cutoffTime)},updatedAt:Date.now()});
    tx.create(db.collection('duty_time_admin_audit').doc(),{uid:target.uid,company:target.company,actorUid:actor.profile.uid,action:'cutoff',before:before.data()?.cutoffTime??null,after:input.cutoffTime,at:Date.now()});
   });
   const ids=await autoCheckoutUser(db,target.uid);await Promise.all(ids.map(deliverReport));

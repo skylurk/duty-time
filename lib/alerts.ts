@@ -25,6 +25,6 @@ export async function queueOvertimeAlerts(db:Firestore,uid:string,now=Date.now()
   day.sessions.push(p.session);days.set(p.date,day);
  }}
  const ids:string[]=[];
- for(const day of days.values())if(totalForDay(day)>TARGET_MS)ids.push(await queueAlert(db,uid,day,'overtime_alert',`Daily duty exceeded 12 hours on ${day.date}: ${duration(totalForDay(day))}. Work may continue. Detected at ${zuluLabel(now)}.`,day.date));
+ for(const day of days.values())if(totalForDay(day)>TARGET_MS)ids.push(await queueAlert(db,uid,day,'overtime_alert',`Daily duty exceeded 12 hours on ${day.date}: ${duration(totalForDay(day))}. Work may continue, up to 20 hours in the day. After check-out a 10-hour rest is required before the next check-in. Detected at ${zuluLabel(now)}.`,day.date));
  return ids;
 }
