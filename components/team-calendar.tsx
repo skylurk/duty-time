@@ -6,6 +6,7 @@ import { Modal } from '@/components/modal';
 import { dateKey, dayStart, duration, nextDate, timeLabel, TIME_ZONE, TARGET_MS } from '@/lib/duty';
 import { calendarSummary, dayBreakdown, type ReportData } from '@/lib/reports';
 import { monthRange, useReportData } from './report-data';
+import { ManagerCheckout } from './manager-checkout';
 
 /** Hours each person on duty now has worked on `date` in their station's local day (0 if not on that date). */
 function liveOn(data: ReportData, date: string, now: number) {
@@ -15,7 +16,7 @@ function liveOn(data: ReportData, date: string, now: number) {
   }).filter(a => a.elapsed > 0);
 }
 
-export function TeamCalendar() {
+export function TeamCalendar({ notify }: { notify: (s: string) => void }) {
   const [month, setMonth] = useState(dateKey().slice(0, 7)), [selected, setSelected] = useState<string | null>(null);
   const { from, to } = monthRange(month), { data, error, loading, retry } = useReportData(from, to);
   const summary = useMemo(() => calendarSummary(data?.from === from ? data.days : []), [data, from]);
@@ -38,18 +39,18 @@ export function TeamCalendar() {
         </button>;
       })}</div>}
     <div className="calendar-footer"><span>Confirmed hours only. Provisional time awaiting an actual checkout is listed separately.</span><span>Dates are station-local duty days</span></div>
-    {selected && data && <DayModal data={data} date={selected} close={() => setSelected(null)} />}
+    {selected && data && <DayModal data={data} date={selected} close={() => setSelected(null)} notify={notify} done={() => { setSelected(null); retry(); }} />}
   </section>;
 }
 
-function DayModal({ data, date, close }: { data: ReportData; date: string; close: () => void }) {
+function DayModal({ data, date, close, notify, done }: { data: ReportData; date: string; close: () => void; notify: (s: string) => void; done: () => void }) {
   const entries = dayBreakdown(data.days, data.people, date), live = liveOn(data, date, Date.now());
   const total = entries.reduce((n, e) => n + e.total, 0), over = entries.filter(e => e.overtime > 0).length;
   const heading = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   return <Modal title={`Team hours on ${date}`} close={close}>
     <div className="eyebrow">TEAM CALENDAR</div><h2>{heading}</h2>
     <p>{entries.length ? `${entries.length} ${entries.length === 1 ? 'person' : 'people'} · ${duration(total)} recorded` : 'No recorded hours for this day.'}{over ? <> · <strong className="text-over">{over} over 12 hours</strong></> : null}</p>
-    {live.length > 0 && <div className="day-live"><h3><span className="active-dot" aria-hidden />On duty now</h3>{live.map(a => <div className="day-person" key={a.uid}><div><strong>{a.name}</strong><small>{a.position}{a.position ? ' · ' : ''}checked in {timeLabel(a.start, a.timeZone)} ({a.timeZone || TIME_ZONE}) · {a.station}</small></div><span className={`day-person-hours ${a.elapsed > TARGET_MS ? 'hours-over' : ''}`}>{duration(a.elapsed)}<small>so far</small></span></div>)}</div>}
+    {live.length > 0 && <div className="day-live"><h3><span className="active-dot" aria-hidden />On duty now</h3>{live.map(a => <div className="day-person" key={a.uid}><div><strong>{a.name}</strong><small>{a.position}{a.position ? ' · ' : ''}checked in {timeLabel(a.start, a.timeZone)} ({a.timeZone || TIME_ZONE}) · {a.station}</small></div><span className="day-person-actions"><span className={`day-person-hours ${a.elapsed > TARGET_MS ? 'hours-over' : ''}`}>{duration(a.elapsed)}<small>so far</small></span><ManagerCheckout compact uid={a.uid} name={a.name} active={a} notify={notify} done={done} /></span></div>)}</div>}
     <div className="day-people">{entries.map(e => <div className={`day-person ${e.overtime ? 'is-over' : ''}`} key={e.uid}>
       <div><strong>{e.name}</strong><small>{e.position}</small>
         {e.sessions.map((s, i) => <small key={i} className="day-person-session"><MapPin size={11} aria-hidden />{timeLabel(s.start, s.timeZone)} – {timeLabel(s.end, s.timeZone)} · {s.station} ({s.timeZone || TIME_ZONE}){s.autoCheckoutPending ? ' · provisional, awaiting actual checkout' : ''}</small>)}

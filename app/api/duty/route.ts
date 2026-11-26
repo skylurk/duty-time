@@ -10,7 +10,7 @@ import { canCheckIn, sessionCutoff, correctionDates, correctedDays, recordedStat
 import { autoCheckoutUser } from '@/lib/auto-checkout';
 import { restDecision, hoursOnDate, dailyCapAt, DAILY_CAP_MS } from '@/lib/rest';
 import { queueAlert, queueOvertimeAlerts } from '@/lib/alerts';
-import { dateKey, dayStart, nextDate, TIME_ZONE, TARGET_MS, totalForDay, zuluLabel, parseTime, splitSession, validateSessions, type DutyDay, type Active, type Audit } from '@/lib/duty';
+import { dateKey, dayStart, nextDate, timeLabel, TIME_ZONE, TARGET_MS, totalForDay, zuluLabel, parseTime, splitSession, validateSessions, type DutyDay, type Active, type Audit } from '@/lib/duty';
 const ROUTINE_REPORTS = new Set(['checkout', 'closed', 'edited', 'approved']);
 class RestDenied extends Error { constructor(public uid:string, public day:DutyDay,public lastEnd:number,public eligibleAt:number|null,public stationId:string,message:string){super(message);} }
 export const runtime = 'nodejs';
@@ -21,6 +21,7 @@ const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('checkin'), requestId: z.uuid(), stationId: identifier, notes: z.string().max(2000).default(''), time: clock.optional() }),
   z.object({ action: z.literal('checkout'), requestId: z.uuid(), time: clock.optional(), closeDay: z.boolean().default(false) }),
+  z.object({ action: z.literal('managerCheckout'), requestId: z.uuid(), uid: identifier, endDate: date, end: clock, reason: z.string().trim().min(5, 'Please give a reason for checking this person out.').max(2000) }),
   z.object({ action: z.literal('close'), requestId: z.uuid() }),
   z.object({ action: z.literal('request'), requestId: z.uuid(), date, start: clock, end: clock, stationId: identifier, reason: z.string().trim().min(5, 'Please explain why the duty was not logged.').max(2000) }),
   z.object({ action: z.enum(['approve', 'reject']), requestId: z.uuid(), uid: identifier, date, revision: z.number().int().nonnegative(), reason: z.string().trim().max(2000).default('') }),
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
     const actor = await authenticate(request), input = schema.parse(await readBody(request));
     const { db } = adminServices(), now = Date.now(), today = dateKey(now);
     const target = 'uid' in input ? await authorizeTarget(actor, input.uid, input.action !== 'actualCheckout') : actor.profile;
+    if (input.action === 'managerCheckout') fail(target.uid !== actor.profile.uid, 'Use Check out to end your own session.');
     const dueReports = await autoCheckoutUser(db,target.uid,now);
     await Promise.all(dueReports.map(deliverReport));
     const settings = await getSettings(actor.profile.company);
@@ -110,9 +112,11 @@ export async function POST(request: NextRequest) {
         fail(day.sessions.length < 48, 'This day has reached the session limit.');
         tx.set(stateRef, { uid: target.uid, company: target.company, timeZone, stationId:station!.id, active: { id: input.requestId, date: today, start, ...sessionCutoff({start,timeZone,capAt},target.cutoffTime), capAt, timeZone, stationId: station!.id, station: station!.name, notes: input.notes }, updatedAt: now }, { merge: true });
         message = 'You’re checked in. Your timer will keep running when you leave this page.';
-      } else if (input.action === 'checkout') {
-        fail(active, 'You have no active session. Refresh your duty records.', 409);
-        const end = input.time ? parseTime(today, input.time,timeZone) : now;
+      } else if (input.action === 'checkout' || input.action === 'managerCheckout') {
+        // A line manager or administrator may end someone else's open session at a stated time, with a reason.
+        const byManager = input.action === 'managerCheckout', closeDay = !byManager && input.closeDay;
+        fail(active, byManager ? `${target.name} is no longer checked in. Refresh to see the latest records.` : 'You have no active session. Refresh your duty records.', 409);
+        const end = byManager ? parseTime(input.endDate, input.end, active.timeZone) : input.time ? parseTime(today, input.time,timeZone) : now;
         fail(end <= now && end > active.start, 'Check-out must follow check-in and cannot be in the future.');
         const pieces = splitSession(active, end);
         fail(pieces.length <= 31, 'This session spans more than 31 days. Ask your administrator to correct it.');
@@ -123,12 +127,15 @@ export async function POST(request: NextRequest) {
           day.sessions = [...(day.status === 'rejected' ? [] : day.sessions), piece.session].sort((a, b) => a.start - b.start);
           fail(day.sessions.length <= 48, 'This day has reached the session limit.');
           try { validateSessions(day.sessions, day.date, now); } catch (e) { throw new HttpError(400, (e as Error).message); }
-          day.status = recordedStatus(day.sessions); fail(!input.closeDay || day.status === 'recorded', 'Record the actual checkout for pending sessions before closing the day.'); day.closed = input.closeDay;
+          day.status = recordedStatus(day.sessions); fail(!closeDay || day.status === 'recorded', 'Record the actual checkout for pending sessions before closing the day.'); day.closed = closeDay;
           return day;
         });
-        for (const day of updated) save(day, input.closeDay ? 'closed' : 'checkout');
+        for (const [i, day] of updated.entries()) {
+          save(day, closeDay ? 'closed' : 'checkout');
+          if (byManager) tx.create(db.collection('duty_time_audit').doc(`${input.requestId}_${day.date}`), { dayId: day.id, uid: target.uid, company: target.company, actorUid: actor.profile.uid, actorName: actor.profile.name, at: now, action: 'manager_checkout', reason: input.reason, before: snapshots[i].exists ? (snapshots[i].data() as DutyDay).sessions : [], after: day.sessions, statusAfter: day.status });
+        }
         tx.set(stateRef, { uid: target.uid, company: target.company, active: null, updatedAt: now }, { merge: true });
-        message = input.closeDay ? 'Your day is closed.' : 'You’re checked out.';
+        message = byManager ? `${target.name} is checked out at ${timeLabel(end, active.timeZone)} (${active.timeZone || TIME_ZONE}).` : closeDay ? 'Your day is closed.' : 'You’re checked out.';
       } else if (input.action === 'close') {
         fail(!active, 'Check out before closing your day.');
         const ref = db.collection('duty_time_days').doc(dayId(target.uid, today)), snap = await tx.get(ref);

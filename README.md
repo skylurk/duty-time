@@ -56,6 +56,7 @@ The supplied service account can read current rules but was denied the Rules API
 - Per-day overtime above 12 hours, calendar navigation, session detail sheets, CSV export
 - Missed-entry requests only for dates without a duty document, with required reasons
 - Assigned line managers can review requests and edit recorded hours with immutable audit records
+- Line managers (for their team) and administrators (for anyone in the company) can check out someone who is still checked in, with a finish time and reason (`managerCheckout`, audited as `manager_checkout`); it is recorded like a normal check-out
 - **My line duty** lists checked-in team members first, with a green *Active* indicator, their check-in time in the station’s local time zone, the station, and live hours worked today
 - Final daily reports through Close for the day
 - Admin user creation, duty roles, multiple searchable line-manager selection, station management, and shared-password updates

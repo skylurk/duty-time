@@ -194,3 +194,23 @@ test('admin team calendar marks overtime and the overtime report lists dates and
  await expect(report).toContainText('Long Shift');await expect(report).toContainText('+1h 30m');await expect(report).not.toContainText('Short Shift');
  await expect(page.getByRole('button',{name:'Print'})).toBeEnabled();
 });
+test('a line manager or admin can check out a team member with a finish time and reason',async({page})=>{
+ const start=parseTime(today,'06:00'),data=await mockAccount(page,true,start);
+ data.team=[{...profile,uid:'team-member',name:'Team Colleague',firstName:'Team',lineManagerUids:[profile.uid]}];
+ let posted:Record<string,unknown>|undefined;
+ await page.route('**/api/duty',async route=>{posted=route.request().postDataJSON();data.active=null;await route.fulfill({json:{message:'Team Colleague is checked out at 11:30 (Africa/Nairobi).',delivery:[]}});});
+ await page.reload();
+ await page.getByRole('button',{name:/My line duty/}).click();
+ await page.getByRole('button',{name:/Team Colleague/}).click();
+ await expect(page.locator('.manager-checkout-card')).toContainText('Team Colleague is checked in');
+ await page.getByRole('button',{name:'Check out now'}).click();
+ const dialog=page.getByRole('dialog',{name:'Check out Team Colleague'});
+ await dialog.getByLabel(/Finish time/).fill('11:30');
+ await dialog.getByRole('button',{name:'Check out Team Colleague'}).click();
+ await expect(dialog.getByLabel('Reason')).toBeFocused();expect(posted).toBeUndefined();
+ await dialog.getByLabel('Reason').fill('Forgot to check out; confirmed by phone');
+ await dialog.getByRole('button',{name:'Check out Team Colleague'}).click();
+ await expect.poll(()=>posted).toMatchObject({action:'managerCheckout',uid:'team-member',endDate:today,end:'11:30',reason:'Forgot to check out; confirmed by phone'});
+ await expect(page.getByText('Team Colleague is checked out at 11:30')).toBeVisible();
+ await expect(page.locator('.manager-checkout-card')).toHaveCount(0);
+});

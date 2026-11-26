@@ -210,3 +210,7 @@ label>span.password-field{position:relative;display:block;margin:0;color:inherit
 .email-warning{margin:0;padding:9px 12px;border-radius:8px;background:#fff6e6;border:1px solid #f3d79c;color:#7a4f00;font-size:13.5px}
 .email-actions{display:flex;gap:10px;flex-wrap:wrap}
 @media (max-width:700px){.email-rule{padding:12px}.email-rule-top{flex-direction:column;gap:8px}}
+/* Check out a team member */
+.manager-checkout-card{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 20px;margin-bottom:18px;border-color:#abefc6;background:#f6fcf8}
+.manager-checkout-card strong{display:flex;align-items:center;gap:8px;font-size:15px;color:#1f2a31}.manager-checkout-card small{display:block;margin-top:4px;font-size:13px;color:#4d5a63}
+.day-person-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex:none}
