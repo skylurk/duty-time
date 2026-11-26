@@ -7,12 +7,14 @@ import { getSettings, getStations } from '@/lib/server/data';
 import { validTimeZone, TIME_ZONE } from '@/lib/duty';
 import { readStationContacts } from '@/lib/station-contacts';
 import { emailReady } from '@/lib/server/reports';
+import { notificationRules, notificationsSchema } from '@/lib/notifications';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const uid = z.string().min(1).max(128).regex(/^[^/]+$/);
 const roleFields = { position: z.string().trim().min(1).max(100), isLineManager: z.boolean(), lineManagerUids: z.array(uid).max(20), enabled: z.boolean() };
 const schema = z.discriminatedUnion('action', [
   z.object({action:z.literal('alertRecipients'),alertEmails:z.array(z.email()).max(50)}),
+  z.object({action:z.literal('notifications'),notifications:notificationsSchema}),
   z.object({ action: z.literal('settings'), allowManualTimes: z.boolean() }),
   z.object({ action: z.literal('station'), id: uid.optional(), name: z.string().trim().min(2).max(150), country: z.string().trim().max(100).default(''), timeZone:z.string().refine(validTimeZone,'Choose a valid IANA time zone.').default(TIME_ZONE), active: z.boolean() }),
   z.object({ action: z.literal('user'), uid, ...roleFields }),
@@ -23,15 +25,22 @@ export async function GET(request: NextRequest) {
   try {
     const actor = await authenticate(request); fail(actor.isAdmin, 'Administrator access is required.', 403);
     const { db } = adminServices();
-    const [users, stations, settings, positions, reports, contacts] = await Promise.all([companyProfiles(actor.profile.company), getStations(actor.profile.company), getSettings(actor.profile.company), db.collection('position').get(), db.collection('duty_time_reports').where('company', '==', actor.profile.company).get(), readStationContacts(db,actor.profile.company)]);
+    const [users, stations, settings, positions, reports, contacts, settingsDoc] = await Promise.all([companyProfiles(actor.profile.company), getStations(actor.profile.company), getSettings(actor.profile.company), db.collection('position').get(), db.collection('duty_time_reports').where('company', '==', actor.profile.company).get(), readStationContacts(db,actor.profile.company), db.collection('duty_time_settings').doc(actor.profile.company).get()]);
     const alertContacts=[...users.filter(u=>u.enabled&&u.email).map(u=>({name:u.name,email:u.email,kind:'user'})),...contacts.filter(c=>c.active!==false&&c.email&&stations.some(s=>s.id===c.stationId)).map(c=>({name:`${stations.find(s=>s.id===c.stationId)!.name} — ${c.name}`,email:c.email,kind:'station'}))];
-    return NextResponse.json({ users, stations, settings, alertContacts, positions: positions.docs.map(d => String(d.data().title || '')).filter(Boolean), reportDeliveryReady: emailReady(), reports: reports.docs.filter(d => d.data().state !== 'sent').map(d => { const v = d.data(); return { id: d.id, name: v.name, date: v.date, state: v.state, reason: v.blockedReason || '' }; }).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 100) }, { headers: { 'Cache-Control': 'private, no-store' } });
+    return NextResponse.json({ users, stations, settings, notifications: notificationRules(settingsDoc.data()), alertContacts, positions: positions.docs.map(d => String(d.data().title || '')).filter(Boolean), reportDeliveryReady: emailReady(), reports: reports.docs.filter(d => !['sent', 'skipped'].includes(d.data().state)).map(d => { const v = d.data(); return { id: d.id, name: v.name, date: v.date, state: v.state, reason: v.blockedReason || '' }; }).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 100) }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) { return apiError(error); }
 }
 export async function POST(request: NextRequest) {
   try {
     const actor = await authenticate(request); fail(actor.isAdmin, 'Administrator access is required.', 403);
     const input = schema.parse(await readBody(request)), { db, auth } = adminServices(), company = actor.profile.company;
+    if(input.action==='notifications'){
+      const rules=Object.fromEntries(Object.entries(input.notifications).map(([type,r])=>[type,{...r,extra:[...new Set(r.extra.map(e=>e.trim().toLowerCase()))]}]));
+      // alertEmails mirrors the two alert lists for code that predates per-email rules (e.g. a scheduled job not yet redeployed).
+      const alertEmails=[...new Set([...rules.overtime_alert.extra,...rules.rest_alert.extra])];
+      await db.collection('duty_time_settings').doc(company).set({notifications:rules,alertEmails,updatedBy:actor.profile.uid,updatedAt:Date.now()},{merge:true});
+      return NextResponse.json({message:'Email settings saved.'});
+    }
     if(input.action==='alertRecipients'){
       await db.collection('duty_time_settings').doc(company).set({alertEmails:[...new Set(input.alertEmails.map(email=>email.trim().toLowerCase()))],updatedBy:actor.profile.uid,updatedAt:Date.now()},{merge:true});
     } else if (input.action === 'settings') {

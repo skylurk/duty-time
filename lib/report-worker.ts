@@ -3,6 +3,7 @@ import type { Auth } from 'firebase-admin/auth';
 import type { DutyDay, Profile } from './duty';
 import { readStationContacts } from './station-contacts';
 import { reportContent } from './report-content';
+import { notificationRules, ruleForKind } from './notifications';
 export type ReportIdentity=Pick<Profile,'uid'|'company'|'name'|'lineManagerUids'>;
 export function enqueueReport(db:Firestore,tx:Transaction,id:string,day:DutyDay,profile:ReportIdentity,kind:string){
   tx.create(db.collection('duty_time_reports').doc(id),{uid:profile.uid,company:profile.company,name:profile.name,date:day.date,managerUids:profile.lineManagerUids,day:{...day,audit:[]},kind,state:'queued',attempts:0,createdAt:Date.now()});
@@ -18,16 +19,16 @@ export async function sendReport(db:Firestore,auth:Auth,id:string,config:{apiKey
  try{
   const membership=(await db.collection('duty_time_user_data').doc(report.uid).get()).data();
   if(!membership||membership.company!==report.company)throw new Error('Membership unavailable');
-  const managerUids:string[]=Array.isArray(membership.lineManagerUids)?membership.lineManagerUids:[];
+  // Who receives this email is set per email type in Administration → Settings (lib/notifications.ts).
+  const rule=ruleForKind(notificationRules((await db.collection('duty_time_settings').doc(report.company).get()).data()),report.kind);
+  if(!rule.enabled){await ref.update({state:'skipped',blockedReason:''});return 'skipped';}
+  const managerUids:string[]=rule.managers&&Array.isArray(membership.lineManagerUids)?membership.lineManagerUids:[];
   const eligible=await Promise.all(managerUids.map(async uid=>{const member=(await db.collection('duty_time_user_data').doc(uid).get()).data();if(!member||member.company!==report.company||!member.isLineManager||member.enabled===false)return null;const user=await auth.getUser(uid);return !user.disabled?user.email:null;}));
-  const isAlert=['overtime_alert','rest_alert'].includes(report.kind);
-  const settings=isAlert?(await db.collection('duty_time_settings').doc(report.company).get()).data():null;
-  const extra:string[]=Array.isArray(settings?.alertEmails)?settings.alertEmails:[];
+  const extra=rule.extra;
   const stationIds=new Set<string>(Array.isArray(report.stationIds)?report.stationIds:(report.day?.sessions||[]).map((s:{stationId:string})=>s.stationId));
-  const stationContacts=isAlert&&stationIds.size?await readStationContacts(db,report.company):[];
+  const stationContacts=rule.stations&&stationIds.size?await readStationContacts(db,report.company):[];
   const stationEmails=stationContacts.filter(c=>c.active!==false&&stationIds.has(c.stationId)&&['maintenance','operations'].includes(c.department)).map(c=>c.email);
-  const includeOwner=['automatic_checkout','actual_checkout'].includes(report.kind);
-  const owner=includeOwner?await auth.getUser(report.uid):null;
+  const owner=rule.person?await auth.getUser(report.uid):null;
   const recipients=[...new Set([...eligible,...extra,...stationEmails,...(owner?.email?[owner.email]:[])].filter((v):v is string=>typeof v==='string').map(v=>v.trim().toLowerCase()).filter(v=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)))].sort();
   if(!recipients.length){await ref.update({state:'blocked',blockedReason:'No eligible recipient email addresses are assigned.'});return 'blocked';}
   // Persist the exact payload before sending: provider idempotency requires identical retries.

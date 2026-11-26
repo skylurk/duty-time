@@ -68,3 +68,15 @@ test('automatic reports email the member and manager and retries do not resend a
  assert.deepEqual(sent[0].to,['manager@example.com','member@example.com']);
  await sendReport(db,auth,id,{apiKey:'test-only',from:'duty@example.com'});assert.equal(sent.length,1);
 });
+test('admins choose who receives automatic checkout emails, or switch them off',async(t)=>{
+ const auth={getUser:async(uid:string)=>({email:`${uid}@example.com`,disabled:false})} as unknown as Auth;
+ const sent:{to:string[]}[]=[];t.mock.method(globalThis,'fetch',async(_url:unknown,options:{body:string})=>{sent.push(JSON.parse(options.body));return new Response(JSON.stringify({id:'provider-id'}),{status:200});});
+ const only={db:database()};only.db.rows.set('duty_time_settings/company',{notifications:{automatic_checkout:{enabled:true,person:false,managers:false,stations:false,extra:['argwens@example.com','alexys@example.com']}}});
+ const [id]=await autoCheckoutUser(only.db.db,'member',cutoff);
+ assert.equal(await sendReport(only.db.db,auth,id,{apiKey:'test-only',from:'duty@example.com'}),'sent');
+ assert.deepEqual(sent[0].to,['alexys@example.com','argwens@example.com']);
+ const off=database();off.rows.set('duty_time_settings/company',{notifications:{automatic_checkout:{enabled:false,person:true,managers:true,stations:false,extra:[]}}});
+ const [offId]=await autoCheckoutUser(off.db,'member',cutoff);
+ assert.equal(await sendReport(off.db,auth,offId,{apiKey:'test-only',from:'duty@example.com'}),'skipped');
+ assert.equal(sent.length,1);
+});

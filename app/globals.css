@@ -194,3 +194,19 @@ label>span.password-field{position:relative;display:block;margin:0;color:inherit
 @media (max-width:700px){.ot-text{display:none}.ot-badge{min-width:16px;text-align:center}}
 .exceptions-header{border-top:1px solid var(--border);margin-top:22px}.exceptions-empty{padding:0 24px 4px}
 @media (max-width:700px){.exceptions-empty{padding:0 15px 4px}}
+/* Email notifications (Administration → Settings) */
+.email-settings{margin-top:26px;padding-top:22px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:14px}
+.email-settings-head{display:flex;gap:12px;align-items:flex-start}.email-settings-head h3{margin:0;font-size:16px;color:#1f2a31}.email-settings-head p{margin:4px 0 0;font-size:14px;color:#4d5a63;line-height:1.6}
+.email-rule{margin:0;min-width:0;border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;background:#fff}
+.email-rule.is-off{background:#f7f9fa}.email-rule.is-off .email-rule-top strong{color:#5d6a73}
+.email-rule-top{display:flex;gap:14px;align-items:flex-start;justify-content:space-between}
+.email-rule-top strong{display:block;font-size:15px;color:#1f2a31}.email-rule-top small{display:block;margin-top:3px;font-size:13px;color:#4d5a63;line-height:1.5}
+.email-switch{display:flex!important;align-items:center;gap:8px;margin:0!important;padding:6px 10px!important;border:1px solid var(--border)!important;border-radius:999px!important;font-size:13px;font-weight:600;color:#3d4a52;flex:none;cursor:pointer}
+.email-switch input{width:32px;height:18px;accent-color:var(--brand-blue);margin:0}
+.email-groups{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.email-groups-label{font-size:13px;font-weight:600;color:#3d4a52;margin-right:4px}
+.email-group{display:inline-flex!important;align-items:center;gap:7px;margin:0!important;padding:7px 11px!important;border:1px solid var(--border)!important;border-radius:8px!important;font-size:13.5px;color:#26323a;cursor:pointer}
+.email-group:has(input:checked){border-color:#9cc8e6!important;background:#edf6fc}.email-group input{width:16px;height:16px;accent-color:var(--brand-blue);margin:0}
+.email-rule .recipient-picker>label{margin-top:2px}
+.email-warning{margin:0;padding:9px 12px;border-radius:8px;background:#fff6e6;border:1px solid #f3d79c;color:#7a4f00;font-size:13.5px}
+.email-actions{display:flex;gap:10px;flex-wrap:wrap}
+@media (max-width:700px){.email-rule{padding:12px}.email-rule-top{flex-direction:column;gap:8px}}

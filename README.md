@@ -75,13 +75,17 @@ Emails are built in `lib/report-content.ts` and sent by `lib/report-worker.ts`. 
 
 Routine reports (check-out, close for the day, manager edits, approved missed entries) are emailed **only when that day’s confirmed total exceeds 12 hours**. Missed checkouts and alerts are always emailed. Overtime is confirmed time above 12 hours in a station-local day; provisional hours awaiting an actual checkout do not count.
 
-| Report | When | Recipients |
-|---|---|---|
-| Check-out, final daily, and corrected reports | Day over 12 hours only | The user’s enabled line managers |
-| Automatic and actual checkout | Always | Line managers and the user |
-| 12-hour overtime and insufficient-rest alerts | Always; overtime is checked every minute while on duty | Line managers, the alert emails in Administration → Settings, and active maintenance/operations contacts for the station |
+Admins choose the recipients of each email type in **Administration → Settings → Email notifications** (`lib/notifications.ts`, stored as `notifications` on `duty_time_settings/<company>`). Each type can be switched off and sent to any mix of the person, their line managers, station Maintenance/Operations contacts and extra addresses. Until an admin saves, the defaults below apply (the two alerts also include the older `alertEmails` list, which saving keeps in sync):
 
-A report with no valid recipient is marked `blocked` (“No eligible recipient email addresses are assigned”) and stays in Administration → Reports → Email delivery; assign a line manager, then retry. The email content is saved on the first delivery attempt so retries stay identical, which means reports already queued before a template change are still sent in the old layout.
+| Email type | When | Default recipients |
+|---|---|---|
+| Duty report | Check-out, close, edit or approval of a day over 12 hours | Line managers |
+| 12-hour duty alert | Checked every minute while on duty | Line managers, station contacts, alert list |
+| Check-in refused (rest needed) | A check-in inside a required rest | Line managers, station contacts, alert list |
+| Automatic checkout | Cutoff or 20-hour limit reached | The person and line managers |
+| Actual checkout confirmed | Actual finish time entered | The person and line managers |
+
+An email type that is switched off is stored with state `skipped` and is not listed for retry. A report with no valid recipient is marked `blocked` (“No eligible recipient email addresses are assigned”) and stays in Administration → Reports → Email delivery; assign a line manager, then retry. The email content is saved on the first delivery attempt so retries stay identical, which means reports already queued before a template change are still sent in the old layout.
 
 ## Team calendar and reports
 
