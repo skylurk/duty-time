@@ -1,4 +1,4 @@
-import { z } from 'zod';
+// Shared with the scheduled Cloud Function, which does not bundle zod: keep this file dependency-free.
 
 /** Who receives one type of email. `extra` is any further addresses: users, station contacts or typed emails. */
 export type NotificationRule = { enabled: boolean; person: boolean; managers: boolean; stations: boolean; extra: string[] };
@@ -19,7 +19,8 @@ export const RECIPIENT_GROUPS: { key: 'person' | 'managers' | 'stations'; label:
   { key: 'stations', label: 'Station contacts', hint: 'Maintenance and Operations contacts at the station' },
 ];
 
-const clean = (emails: unknown) => Array.isArray(emails) ? [...new Set(emails.filter((e): e is string => typeof e === 'string').map(e => e.trim().toLowerCase()).filter(e => z.email().safeParse(e).success))].slice(0, 50) : [];
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const clean = (emails: unknown) => Array.isArray(emails) ? [...new Set(emails.filter((e): e is string => typeof e === 'string').map(e => e.trim().toLowerCase()).filter(e => EMAIL.test(e)))].slice(0, 50) : [];
 
 /**
  * The effective rules from stored settings. Types an admin has not saved yet keep their defaults; until then the two
@@ -39,6 +40,3 @@ export function ruleForKind(rules: NotificationRules, kind: string): Notificatio
   const n = NOTIFICATIONS.find(x => x.kinds.includes(kind));
   return n ? rules[n.type] : rules.duty_report;
 }
-
-const ruleSchema = z.object({ enabled: z.boolean(), person: z.boolean(), managers: z.boolean(), stations: z.boolean(), extra: z.array(z.email()).max(50) });
-export const notificationsSchema = z.object(Object.fromEntries(NOTIFICATIONS.map(n => [n.type, ruleSchema])) as Record<NotificationType, typeof ruleSchema>);

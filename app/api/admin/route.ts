@@ -7,10 +7,12 @@ import { getSettings, getStations } from '@/lib/server/data';
 import { validTimeZone, TIME_ZONE } from '@/lib/duty';
 import { readStationContacts } from '@/lib/station-contacts';
 import { emailReady } from '@/lib/server/reports';
-import { notificationRules, notificationsSchema } from '@/lib/notifications';
+import { notificationRules, NOTIFICATIONS, type NotificationType } from '@/lib/notifications';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const uid = z.string().min(1).max(128).regex(/^[^/]+$/);
+const notificationRule = z.object({ enabled: z.boolean(), person: z.boolean(), managers: z.boolean(), stations: z.boolean(), extra: z.array(z.email()).max(50) });
+const notificationsSchema = z.object(Object.fromEntries(NOTIFICATIONS.map(n => [n.type, notificationRule])) as Record<NotificationType, typeof notificationRule>);
 const roleFields = { position: z.string().trim().min(1).max(100), isLineManager: z.boolean(), lineManagerUids: z.array(uid).max(20), enabled: z.boolean() };
 const schema = z.discriminatedUnion('action', [
   z.object({action:z.literal('alertRecipients'),alertEmails:z.array(z.email()).max(50)}),

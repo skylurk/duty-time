@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { notificationRules, ruleForKind, notificationsSchema, NOTIFICATIONS } from '../lib/notifications';
+import { readFileSync } from 'node:fs';
+import { notificationRules, ruleForKind, NOTIFICATIONS } from '../lib/notifications';
 
 test('defaults keep the original recipients for every email', () => {
   const r = notificationRules(undefined);
@@ -17,10 +18,13 @@ test('the older shared alert list applies to both alerts until an admin saves ru
   assert.deepEqual([saved.overtime_alert.extra, saved.overtime_alert.managers, saved.rest_alert.extra], [[], false, ['quality@example.com']]);
 });
 
+test('rules shared with the scheduled job import nothing it does not package', () => {
+  for (const f of ['lib/notifications.ts', 'lib/report-worker.ts']) assert.doesNotMatch(readFileSync(f, 'utf8'), /from 'zod'/);
+});
+
 test('each stored report kind maps to its email type', () => {
   const r = notificationRules({ notifications: { duty_report: { enabled: false, person: false, managers: true, stations: false, extra: [] } } });
   for (const kind of ['checkout', 'closed', 'edited', 'approved']) assert.equal(ruleForKind(r, kind).enabled, false);
   assert.equal(ruleForKind(r, 'automatic_checkout').person, true);
   assert.equal(NOTIFICATIONS.length, 5);
-  assert.equal(notificationsSchema.safeParse({ ...r, duty_report: { ...r.duty_report, extra: ['bad'] } }).success, false);
 });
